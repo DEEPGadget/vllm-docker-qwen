@@ -2,6 +2,26 @@
 
 단일 `docker-compose.yml` + `Makefile` 래퍼. 포트별 GPU 1장 전용(`TP=1`), 포트당 모델 1개를 선택.
 
+## 전제 (이 구성이 가정하는 환경)
+
+- **하드웨어**: RTX Pro 6000 Blackwell Server Edition(96GB) × 2장 (GPU 0 / GPU 1)
+- **Docker 이미지**: `vllm/vllm-openai:v0.23.0` 가 호스트에 이미 로드되어 있음
+  ```bash
+  docker images | grep vllm-openai     # v0.23.0 존재 확인
+  ```
+- **가중치 경로**: `/mnt/data/models/` 아래 4개 모델 폴더가 존재 (compose에서 `:ro` 로 마운트)
+  ```
+  /mnt/data/models/
+  ├── Qwen2.5-VL-72B-Instruct-AWQ      # 8000: vl72b
+  ├── Qwen2.5-VL-32B-Instruct-AWQ      # 8001: vl32b
+  ├── Qwen3-Coder-Next-FP8             # 8000: coder
+  └── QwQ-32B                          # 8001: qwq
+  ```
+  각 폴더에는 `config.json`, `tokenizer.json`, `*.safetensors`, `model.safetensors.index.json` 등이 모두 포함되어 있어야 함.
+- **네트워크**: 외부 인터넷 없는 온프레미스(에어갭). 모델·이미지·파이썬 패키지는 사전 반입 (아래 "에어갭 운영" 참고)
+- **소프트웨어**: NVIDIA Container Toolkit + `nvidia` 런타임 동작, `docker compose` v2, `make`
+- **경로/이미지 변경 시**: `docker-compose.yml` 의 `image:` 와 `volumes:` (`/mnt/data/models`) 값을 환경에 맞게 수정
+
 | 포트 | GPU | 선택 가능한 모델 |
 |------|-----|------------------|
 | 8000 | 0 | `vl72b` (Qwen2.5-VL-72B-AWQ) · `coder` (Qwen3-Coder-Next-FP8) |
@@ -77,11 +97,6 @@ sudo systemctl enable docker.service containerd.service
 ```
 
 `restart: unless-stopped` → 직전 running 모델만 자동 복귀.
-
-## 사전 조건
-
-- NVIDIA Container Toolkit, `nvidia` 런타임
-- `/mnt/data/models/` 하위: `Qwen2.5-VL-72B-Instruct-AWQ` / `Qwen2.5-VL-32B-Instruct-AWQ` / `QwQ-32B` / `Qwen3-Coder-Next-FP8`
 
 ## 참고 — 토크나이저 패치 (적용 완료)
 
