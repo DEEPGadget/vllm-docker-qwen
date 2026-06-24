@@ -1,0 +1,119 @@
+# vLLM 2x RTX Pro 6000 Blackwell SE — 단일 compose (GPU 1장 전용 / TP=1)
+# 포트 8000(GPU0): vl72b | coder        포트 8001(GPU1): vl32b | qwq
+# 직접 실행보다 Makefile 사용 권장:  make up / make 8001-qwq / make ps
+name: vllm
+
+x-common: &common
+  image: vllm/vllm-openai:v0.23.0
+  ipc: host
+  restart: unless-stopped
+  stop_grace_period: 30s
+  volumes:
+    - /mnt/data/models:/models:ro
+  environment:
+    - HF_HUB_OFFLINE=1            # 에어갭: HF 다운로드 차단
+    - TRANSFORMERS_OFFLINE=1
+    - HF_HUB_DISABLE_TELEMETRY=1
+    - VLLM_NO_USAGE_STATS=1
+    - VLLM_DO_NOT_TRACK=1
+    # - VLLM_ATTENTION_BACKEND=FLASH_ATTN   # sm120 ViT/flashinfer 오류 시
+
+services:
+  # ----- 포트 8000 / GPU 0 -----
+  vl72b:
+    <<: *common
+    profiles: ["vl72b"]
+    container_name: vllm-8000-vl72b
+    ports: ["8000:8000"]
+    deploy: { resources: { reservations: { devices: [{ driver: nvidia, device_ids: ["0"], capabilities: [gpu] }] } } }
+    command:
+      - --model
+      - /models/Qwen2.5-VL-72B-Instruct-AWQ
+      - --served-model-name
+      - Qwen2.5-VL-72B-Instruct-AWQ
+      - --quantization
+      - awq_marlin
+      - --tensor-parallel-size
+      - "1"
+      - --max-model-len
+      - "32768"
+      - --gpu-memory-utilization
+      - "0.90"
+      - --trust-remote-code
+      - --port
+      - "8000"
+
+  coder:
+    <<: *common
+    profiles: ["coder"]
+    container_name: vllm-8000-coder
+    ports: ["8000:8000"]
+    deploy: { resources: { reservations: { devices: [{ driver: nvidia, device_ids: ["0"], capabilities: [gpu] }] } } }
+    command:
+      - --model
+      - /models/Qwen3-Coder-Next-FP8
+      - --served-model-name
+      - Qwen3-Coder-Next
+      - --tensor-parallel-size
+      - "1"
+      - --max-model-len
+      - "32768"
+      - --max-num-seqs
+      - "512"
+      - --kv-cache-dtype
+      - fp8
+      - --gpu-memory-utilization
+      - "0.92"
+      - --enable-auto-tool-choice
+      - --tool-call-parser
+      - qwen3_coder
+      - --trust-remote-code
+      - --port
+      - "8000"
+
+  # ----- 포트 8001 / GPU 1 -----
+  vl32b:
+    <<: *common
+    profiles: ["vl32b"]
+    container_name: vllm-8001-vl32b
+    ports: ["8001:8001"]
+    deploy: { resources: { reservations: { devices: [{ driver: nvidia, device_ids: ["1"], capabilities: [gpu] }] } } }
+    command:
+      - --model
+      - /models/Qwen2.5-VL-32B-Instruct-AWQ
+      - --served-model-name
+      - Qwen2.5-VL-32B-Instruct-AWQ
+      - --quantization
+      - awq_marlin
+      - --tensor-parallel-size
+      - "1"
+      - --max-model-len
+      - "32768"
+      - --gpu-memory-utilization
+      - "0.90"
+      - --trust-remote-code
+      - --port
+      - "8001"
+
+  qwq:
+    <<: *common
+    profiles: ["qwq"]
+    container_name: vllm-8001-qwq
+    ports: ["8001:8001"]
+    deploy: { resources: { reservations: { devices: [{ driver: nvidia, device_ids: ["1"], capabilities: [gpu] }] } } }
+    command:
+      - --model
+      - /models/QwQ-32B
+      - --served-model-name
+      - QwQ-32B
+      - --tensor-parallel-size
+      - "1"
+      - --max-model-len
+      - "32768"
+      - --gpu-memory-utilization
+      - "0.90"
+      - --reasoning-parser
+      - deepseek_r1
+      - --trust-remote-code
+      - --port
+      - "8001"
